@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Impossible Movie</title>
 
+
     <style>
       :root { --film-black: #0a0a0a; --accent: #ffecd1; }
       body {
@@ -20,6 +21,7 @@
       canvas { display: block; width: 100vw; height: 100vh; }
       .slate { position: fixed; top: 1rem; left: 1rem; opacity: 0.9; max-width: 20rem; }
       .monitor { position: fixed; top: 1rem; right: 1rem; font-size: 0.8rem; text-align: right; }
+
     </style>
   </head>
   <body>
@@ -27,6 +29,7 @@
     <div id="bottombar" class="letterbox"></div>
     <main id="stage"></main>
     <aside class="slate" aria-live="polite" id="narration"></aside>
+
     <section class="monitor" id="monitor"></section>
 
     <script type="module">
@@ -79,7 +82,9 @@
       // --- Audio -----------------------------------------------------------
       const synth = new Tone.MembraneSynth().toDestination();
       const ambience = new Tone.AMSynth().toDestination();
+
       const beatLoop = new Tone.Loop((time) => {
+
         synth.triggerAttackRelease('C2', '8n', time);
       }, '2n');
       const pad = new Tone.Loop((time) => {
@@ -87,7 +92,9 @@
       }, '4n');
       async function startAudio() {
         await Tone.start();
+
         beatLoop.start(0);
+
         pad.start(0);
         Tone.Transport.start();
       }

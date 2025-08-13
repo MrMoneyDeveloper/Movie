@@ -1,10 +1,12 @@
 # Impossible Movie
 
+
 A single-page cinematic playground that embraces deliberate glitches in physics, state, and narration. No build step is needed; open the page and the experience begins.
 
 ## Running
 
 1. Clone this repository.
+
 2. Open `index.html` in a modern browser. For best results, launch a local server to bypass cross-origin limits:
 
    ```bash
@@ -39,4 +41,5 @@ All libraries are loaded from CDNs with version pins:
 - [XState](https://xstate.js.org/) – `https://cdn.jsdelivr.net/npm/xstate@4/es/index.js`
 - [RxJS](https://rxjs.dev/) – `https://cdn.jsdelivr.net/npm/rxjs@7.8.1/+esm`
 - [Tone.js](https://tonejs.github.io/) – `https://cdn.jsdelivr.net/npm/tone@14.8.49/+esm`
+
 
