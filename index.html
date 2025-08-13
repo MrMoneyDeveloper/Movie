@@ -82,7 +82,9 @@
       // --- Audio -----------------------------------------------------------
       const synth = new Tone.MembraneSynth().toDestination();
       const ambience = new Tone.AMSynth().toDestination();
-      const loop = new Tone.Loop((time) => {
+
+      const beatLoop = new Tone.Loop((time) => {
+
         synth.triggerAttackRelease('C2', '8n', time);
       }, '2n');
       const pad = new Tone.Loop((time) => {
@@ -90,7 +92,9 @@
       }, '4n');
       async function startAudio() {
         await Tone.start();
-        loop.start(0);
+
+        beatLoop.start(0);
+
         pad.start(0);
         Tone.Transport.start();
       }
@@ -290,5 +294,4 @@
     </script>
   </body>
 </html>
-
 

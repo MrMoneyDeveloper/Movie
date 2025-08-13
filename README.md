@@ -3,7 +3,6 @@
 
 A single-page cinematic playground that embraces deliberate glitches in physics, state, and narration. No build step is needed; open the page and the experience begins.
 
-
 ## Running
 
 1. Clone this repository.
