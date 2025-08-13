@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Impossible Movie</title>
+
+    <style>
+      :root { --film-black: #0a0a0a; --accent: #ffecd1; }
+      body {
+        margin: 0;
+        background: var(--film-black);
+        color: var(--accent);
+        font-family: Inter, system-ui, sans-serif;
+        overflow: hidden;
+      }
+      .letterbox { position: fixed; left: 0; right: 0; height: 6vh; background: #000; z-index: 10; }
+      #topbar { top: 0; }
+      #bottombar { bottom: 0; }
+      canvas { display: block; width: 100vw; height: 100vh; }
+      .slate { position: fixed; top: 1rem; left: 1rem; opacity: 0.9; max-width: 20rem; }
+      .monitor { position: fixed; top: 1rem; right: 1rem; font-size: 0.8rem; text-align: right; }
+    </style>
+  </head>
+  <body>
+    <div id="topbar" class="letterbox"></div>
+    <div id="bottombar" class="letterbox"></div>
+    <main id="stage"></main>
+    <aside class="slate" aria-live="polite" id="narration"></aside>
+    <section class="monitor" id="monitor"></section>
+
+    <script type="module">
+      // --- Imports ---------------------------------------------------------
+      import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+      import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+      import gsap from 'https://cdn.jsdelivr.net/npm/gsap@3.12.5/index.js';
+      import {
+        Engine,
+        Render as MatterRender,
+        Runner,
+        Bodies,
+        Composite
+      } from 'https://cdn.jsdelivr.net/npm/matter-js@0.19.0/+esm';
+      import {
+        createMachine,
+        interpret,
+        assign
+      } from 'https://cdn.jsdelivr.net/npm/xstate@4/es/index.js';
+      import {
+        Subject,
+        filter,
+        interval
+      } from 'https://cdn.jsdelivr.net/npm/rxjs@7.8.1/+esm';
+      import * as Tone from 'https://cdn.jsdelivr.net/npm/tone@14.8.49/+esm';
+
+      // --- Event Bus -------------------------------------------------------
+      const world$ = new Subject();
+      const narration$ = new Subject();
+      const weirdness$ = new Subject();
+
+      // display event bus activity
+      const monitor = document.getElementById('monitor');
+      world$.subscribe((e) => (monitor.textContent = `world: ${e}`));
+      weirdness$.subscribe((e) => (monitor.textContent = `weirdness: ${e}`));
+
+      // --- Narrator --------------------------------------------------------
+      function say(text) {
+        const el = document.getElementById('narration');
+        el.textContent = text;
+        if ('speechSynthesis' in window) {
+          const u = new SpeechSynthesisUtterance(text);
+          u.rate = 1.0;
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(u);
+        }
+      }
+      narration$.subscribe((line) => say(line));
+
+      // --- Audio -----------------------------------------------------------
+      const synth = new Tone.MembraneSynth().toDestination();
+      const ambience = new Tone.AMSynth().toDestination();
+      const loop = new Tone.Loop((time) => {
+        synth.triggerAttackRelease('C2', '8n', time);
+      }, '2n');
+      const pad = new Tone.Loop((time) => {
+        ambience.triggerAttackRelease('G3', '1n', time);
+      }, '4n');
+      async function startAudio() {
+        await Tone.start();
+        loop.start(0);
+        pad.start(0);
+        Tone.Transport.start();
+      }
+      document.body.addEventListener('click', startAudio, { once: true });
+
+      // --- ECS -------------------------------------------------------------
+      class Entity {
+        constructor() {
+          this.id = crypto.randomUUID();
+          this.components = new Map();
+        }
+        add(component) {
+          this.components.set(component.constructor, component);
+          return this;
+        }
+        get(Component) {
+          return this.components.get(Component);
+        }
+      }
+
+      class Transform {
+        constructor(position = new THREE.Vector3(), velocity = new THREE.Vector3()) {
+          this.position = position;
+          this.velocity = velocity;
+        }
+      }
+
+      class MeshComponent {
+        constructor(mesh) {
+          this.mesh = mesh;
+        }
+      }
+
+      const entities = [];
+      const systems = [];
+
+      function register(entity) {
+        entities.push(entity);
+        return entity;
+      }
+      function addSystem(query, update) {
+        systems.push({ query, update });
+      }
+
+      function tick(dt) {
+        systems.forEach((s) => {
+          const matches = entities.filter(s.query);
+          s.update(dt, matches);
+        });
+      }
+
+      // --- Three.js Scene --------------------------------------------------
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2('#000', 0.15);
+      const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 100);
+      camera.position.set(0, 1.5, 5);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(innerWidth, innerHeight);
+      document.getElementById('stage').appendChild(renderer.domElement);
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      window.addEventListener('resize', () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+      });
+
+      // Lights
+      const keyLight = new THREE.DirectionalLight('#ffffff', 1);
+      keyLight.position.set(5, 10, 7.5);
+      scene.add(keyLight);
+      const fillLight = new THREE.DirectionalLight('#ff00ff', 0.5);
+      fillLight.position.set(-5, -10, -7.5);
+      scene.add(fillLight);
+
+      // Zones (three planes)
+      const zones = [];
+      for (let i = 0; i < 3; i++) {
+        const geom = new THREE.PlaneGeometry(10, 10, 10, 10);
+        const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(`hsl(${i * 120},50%,30%)`), wireframe: true });
+        const plane = new THREE.Mesh(geom, mat);
+        plane.rotation.x = -Math.PI / 2;
+        plane.position.z = -i * 12;
+        scene.add(plane);
+        zones.push(plane);
+      }
+
+      // Entity: cube protagonist
+      const cubeGeom = new THREE.BoxGeometry();
+      const cubeMat = new THREE.MeshStandardMaterial({ color: '#00ff88' });
+      const cubeMesh = new THREE.Mesh(cubeGeom, cubeMat);
+      scene.add(cubeMesh);
+
+      const cube = register(new Entity().add(new Transform(new THREE.Vector3(0, 1, 0))).add(new MeshComponent(cubeMesh)));
+
+      // Matter.js world for ragdoll particles (background flavor)
+      const engine = Engine.create();
+      const runner = Runner.create();
+      const ground = Bodies.rectangle(0, 10, 400, 5, { isStatic: true });
+      Composite.add(engine.world, ground);
+      for (let i = 0; i < 20; i++) {
+        const b = Bodies.circle(Math.random() * 6 - 3, -10 * Math.random(), 0.2);
+        Composite.add(engine.world, b);
+      }
+      Runner.run(runner, engine);
+
+      addSystem(
+        (e) => e.get(Transform) && e.get(MeshComponent),
+        (dt, matches) => {
+          matches.forEach((m) => {
+            const t = m.get(Transform);
+            const mesh = m.get(MeshComponent).mesh;
+            t.position.addScaledVector(t.velocity, dt);
+            mesh.position.copy(t.position);
+            mesh.rotation.y += dt * 0.5;
+          });
+        }
+      );
+
+      // --- Physics Violations ----------------------------------------------
+      weirdness$.pipe(filter((e) => e === 'gravityFlip')).subscribe(() => {
+        engine.gravity.y *= -1;
+        gsap.to(cube.get(Transform).velocity, { y: engine.gravity.y * 0.5, duration: 1 });
+      });
+
+      weirdness$.pipe(filter((e) => e === 'timeStutter')).subscribe(() => {
+        stutterFrames = 10;
+      });
+
+      // --- Director State Machine -----------------------------------------
+      const directorMachine = createMachine({
+        id: 'director',
+        initial: 'intro',
+        context: {
+          runs: Number(localStorage.getItem('runs') || '0')
+        },
+        states: {
+          intro: {
+            entry: assign({ runs: (ctx) => ctx.runs + 1 }),
+            after: { 4000: 'roam' }
+          },
+          roam: {
+            on: { VIOLATE: 'violation' }
+          },
+          violation: {
+            entry: () => weirdness$.next('gravityFlip'),
+            after: { 6000: 'stutter' }
+          },
+          stutter: {
+            entry: () => weirdness$.next('timeStutter'),
+            after: { 3000: 'roam' }
+          }
+        }
+      });
+
+      const director = interpret(directorMachine).onTransition((state) => {
+        switch (state.value) {
+          case 'intro':
+            narration$.next(`Fade in. ${new Date().toLocaleTimeString()} — take ${state.context.runs}.`);
+            break;
+          case 'roam':
+            narration$.next('WASD or orbit to drift. Await the anomaly.');
+            break;
+          case 'violation':
+            narration$.next('Gravity pulses upward. Hold on.');
+            break;
+          case 'stutter':
+            narration$.next('Time falters.');
+            break;
+        }
+        localStorage.setItem('runs', String(state.context.runs));
+      });
+      director.start();
+
+      // Trigger violation every 15 seconds
+      interval(15000).subscribe(() => world$.next('violate'));
+      world$.pipe(filter((e) => e === 'violate')).subscribe(() => director.send('VIOLATE'));
+
+      // --- Main Loop -------------------------------------------------------
+      let last = performance.now();
+      let stutterFrames = 0;
+
+      function loop(now) {
+        const dt = (now - last) / 1000;
+        last = now;
+        if (stutterFrames > 0) {
+          stutterFrames--;
+        } else {
+          tick(dt);
+          controls.update();
+          renderer.render(scene, camera);
+        }
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>
+
