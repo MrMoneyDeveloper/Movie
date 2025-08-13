@@ -34,27 +34,19 @@
 
     <script type="module">
       // --- Imports ---------------------------------------------------------
-      import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-      import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
-      import gsap from 'https://cdn.jsdelivr.net/npm/gsap@3.12.5/index.js';
+      import * as THREE from 'three';
+      import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+      import gsap from 'gsap';
       import {
         Engine,
         Render as MatterRender,
         Runner,
         Bodies,
         Composite
-      } from 'https://cdn.jsdelivr.net/npm/matter-js@0.19.0/+esm';
-      import {
-        createMachine,
-        interpret,
-        assign
-      } from 'https://cdn.jsdelivr.net/npm/xstate@4/es/index.js';
-      import {
-        Subject,
-        filter,
-        interval
-      } from 'https://cdn.jsdelivr.net/npm/rxjs@7.8.1/+esm';
-      import * as Tone from 'https://cdn.jsdelivr.net/npm/tone@14.8.49/+esm';
+      } from 'matter-js';
+      import { createMachine, interpret, assign } from 'xstate';
+      import { Subject, filter, interval } from 'rxjs';
+      import * as Tone from 'tone';
 
       // --- Event Bus -------------------------------------------------------
       const world$ = new Subject();
@@ -182,6 +174,18 @@
         scene.add(plane);
         zones.push(plane);
       }
+
+      // Star field for extra complexity
+      const starCount = 1000;
+      const starGeom = new THREE.BufferGeometry();
+      const starPositions = new Float32Array(starCount * 3);
+      for (let i = 0; i < starCount * 3; i++) {
+        starPositions[i] = (Math.random() - 0.5) * 100;
+      }
+      starGeom.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+      const starMat = new THREE.PointsMaterial({ color: '#ffffff', size: 0.1 });
+      const stars = new THREE.Points(starGeom, starMat);
+      scene.add(stars);
 
       // Entity: cube protagonist
       const cubeGeom = new THREE.BoxGeometry();
