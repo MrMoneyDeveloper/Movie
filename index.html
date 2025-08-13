@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Impossible Movie</title>
+
+    <!-- Rendering & Motion -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+
+    <!-- Physics & State -->
+    <script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xstate@4/dist/xstate.web.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/rxjs@7.8.1/dist/bundles/rxjs.umd.min.js"></script>
+
+    <!-- Audio -->
+    <script src="https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.min.js"></script>
+
+    <style>
+      :root { --film-black: #0a0a0a; --accent: #ffecd1; }
+      body { background: var(--film-black); color: var(--accent); font-family: Inter, system-ui, sans-serif; margin:0; }
+      .letterbox { position: fixed; left: 0; right: 0; height: 6vh; background: #000; z-index: 10; }
+      #topbar { top: 0; } #bottombar { bottom: 0; }
+      canvas { display:block; width:100vw; height:100vh; }
+      .slate { position: fixed; top: 1rem; left: 1rem; opacity: 0.8; }
+    </style>
+  </head>
+  <body>
+    <div id="topbar" class="letterbox"></div>
+    <div id="bottombar" class="letterbox"></div>
+    <main id="stage"></main>
+    <aside class="slate" aria-live="polite" id="narration"></aside>
+
+    <script>
+      // Namespaces from UMD bundles
+      const { gsap } = window;
+      const { rxjs } = window; const { Subject } = rxjs;
+      const { createMachine, interpret } = XState;
+
+      // Event bus
+      const world$ = new Subject();
+      const narration$ = new Subject();
+
+      // Narrator (Fourth‑Wall)
+      const say = (text) => {
+        const el = document.getElementById('narration');
+        el.textContent = text; // captions
+        if ('speechSynthesis' in window) {
+          const u = new SpeechSynthesisUtterance(text);
+          u.rate = 1.0; window.speechSynthesis.speak(u);
+        }
+      };
+
+      // Director state machine
+      const directorMachine = createMachine({
+        id: 'director',
+        initial: 'intro',
+        states: {
+          intro: { after: { 4000: 'openWorld' } },
+          openWorld: {}
+        }
+      });
+
+      interpret(directorMachine).onTransition(state => {
+        if (state.matches('intro')) {
+          say(`Fade in. ${new Date().toLocaleTimeString()} — you arrived.`);
+        }
+        if (state.matches('openWorld')) {
+          say('Explore the impossible cube. Click once to enable sound.');
+        }
+      }).start();
+
+      // Three.js scene setup
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.getElementById('stage').appendChild(renderer.domElement);
+
+      const geometry = new THREE.BoxGeometry();
+      const material = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+      const cube = new THREE.Mesh(geometry, material);
+      scene.add(cube);
+
+      const light = new THREE.PointLight(0xffffff, 1);
+      light.position.set(2, 2, 2);
+      scene.add(light);
+
+      camera.position.z = 5;
+
+      // Physics-breaking effects
+      let velocity = 0;
+      let gravity = -0.01;
+      setInterval(() => { gravity = -gravity; world$.next('gravity flip'); }, 3000);
+
+      let stutter = false;
+      setInterval(() => { stutter = true; setTimeout(() => stutter = false, 200); }, 5000);
+
+      function animate() {
+        requestAnimationFrame(animate);
+        if (stutter) {
+          renderer.render(scene, camera);
+          return; // time stutter: hold frame
+        }
+
+        velocity += gravity;
+        cube.position.y += velocity;
+        if (cube.position.y < -1) { cube.position.y = -1; velocity *= -0.8; }
+        if (cube.position.y > 1) { cube.position.y = 1; velocity *= -0.8; }
+
+        cube.rotation.x += 0.01;
+        cube.rotation.y += 0.01;
+
+        light.position.x = -cube.position.x; // impossible light
+        light.position.y = -cube.position.y;
+
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      // Tone.js: start on first click
+      const synth = new Tone.Synth().toDestination();
+      document.body.addEventListener('click', async () => {
+        await Tone.start();
+        synth.triggerAttackRelease('C4', '8n');
+      }, { once: true });
+    </script>
+  </body>
+</html>
